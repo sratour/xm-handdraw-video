@@ -1,7 +1,7 @@
 # 装到另一台电脑
 
 整个 Skill 是**纯本地脚本 + 一个免费生图平台的密钥**，没有服务端、没有数据库，
-拷过去配好环境就能用。目录 4.5 MB。
+拷过去配好环境就能用。目录 5 MB（大头是内置字体和预览图）。
 
 ## 要准备什么
 
@@ -16,12 +16,32 @@
 
 ---
 
-## 第 1 步：拷目录
+## 第 1 步：拿到目录
+
+三种方式，任选一种。
+
+**A. 下载 zip（最简单，不用装 git）**
+
+打开 https://github.com/sratour/xm-handdraw-video → 点绿色 `Code` 按钮 →
+`Download ZIP` → 解压。得到的文件夹就是整个 Skill。
+
+**B. git clone（之后能用 `git pull` 拿更新）**
+
+复制这一行：
+
+```bash
+git clone https://github.com/sratour/xm-handdraw-video.git
+```
+
+> 提示「不是内部或外部命令」说明这台电脑没装 git。
+> 装 Git for Windows（https://git-scm.com/download/win）或者直接走方式 A。
+
+**C. 从旧电脑拷**
 
 把整个 `xm-handdraw-video` 文件夹拷过去。**别只拷 `scripts/`**——
 `styles/`（画风配方）、`assets/`（锚点图 + 字体）、`references/` 都是运行时要用。
 
-建议放一个路径里**没有空格和中文**的位置，比如 `D:\xm-handdraw-video`。
+放一个路径里**没有空格和中文**的位置，比如 `D:\xm-handdraw-video`。
 （有空格也能跑，但偶尔会在命令行转义上踩坑。）
 
 ---

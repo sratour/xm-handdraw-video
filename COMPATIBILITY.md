@@ -24,6 +24,12 @@
 
 把整个 `xm-handdraw-video` 目录放到下面对应的位置，重启 agent 即可。
 
+可以直接 clone 到目标位置：
+
+```bash
+git clone https://github.com/sratour/xm-handdraw-video.git ~/.claude/skills/xm-handdraw-video
+```
+
 | 平台 | 目录 |
 |---|---|
 | Claude Code | `~/.claude/skills/xm-handdraw-video/`（全局）<br>或 `<项目>/.claude/skills/xm-handdraw-video/`（项目级） |
