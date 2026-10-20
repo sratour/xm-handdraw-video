@@ -5,6 +5,9 @@
 
 ## 一、报一个翻车（最有价值）
 
+**直接开 Issue**：[报翻车表单](https://github.com/sratour/xm-handdraw-video/issues/new?template=bug_report.yml)
+会强制你填齐下面这些，省掉来回追问。
+
 出图/渲染翻车时，光说「画错了」没法修。请带上这三样：
 
 | 要带的 | 为什么 |
@@ -21,7 +24,9 @@ ffmpeg -ss <该场 start+0.3> -i final.mp4 -frames:v 1 -y check.png
 
 ## 二、加一个新画风
 
-这是最欢迎的贡献类型。
+这是最欢迎的贡献类型。用
+[画风提案表单](https://github.com/sratour/xm-handdraw-video/issues/new?template=style_proposal.yml)
+开个单，或者直接提 PR。
 
 1. 复制 `styles/retro-mystery-manga.md`，改 `id` 和内容
 2. 按 `references/style-recipe-spec.md` 的**五段式**写（缺段会被 `recipe.py` 判为无效）

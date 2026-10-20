@@ -1,0 +1,73 @@
+name: 提一个新画风
+description: 往 styles/ 加一套画风配方，带锚点图和成片截图
+title: "[画风] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        最欢迎的贡献类型。流程见
+        [`CONTRIBUTING.md`](https://github.com/sratour/xm-handdraw-video/blob/main/CONTRIBUTING.md)
+        第二节，配方写法见
+        [`references/style-recipe-spec.md`](https://github.com/sratour/xm-handdraw-video/blob/main/references/style-recipe-spec.md)。
+
+        **没有成片截图的画风提案没法评审**——只看配方文字判断不了涂色会不会发脏。
+
+  - type: input
+    id: style_id
+    attributes:
+      label: 画风 id
+      description: 英文小写 + 连字符，会成为 `styles/<id>.md` 和 `assets/<id>/anchor.png`
+      placeholder: retro-mystery-manga
+    validations:
+      required: true
+
+  - type: textarea
+    id: desc
+    attributes:
+      label: 一句话描述这个画风
+      description: 想模仿的是什么年代、什么媒介的质感
+      placeholder: 九十年代周刊少年推理漫画，网点少、线条硬、大黑块
+    validations:
+      required: true
+
+  - type: textarea
+    id: recipe
+    attributes:
+      label: 配方正文
+      description: 按五段式写。已经提交 PR 的话这里写 PR 链接就行
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: anchor
+    attributes:
+      label: 锚点图
+      description: 拖 `assets/<id>/anchor.png` 进来。注意它同时是角色立绘，之后每个场景都会参照它
+      placeholder: 拖图片到这里
+    validations:
+      required: true
+
+  - type: textarea
+    id: shots
+    attributes:
+      label: 成片截图（至少 3 张不同场景）
+      description: 证明这个画风在**多场景**下都稳，不是只出了一张好图
+      placeholder: 拖图片到这里
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 自查
+      options:
+        - label: 配方里没有网点、排线、网屏纹理、渐变、喷枪（这些会让涂色分层变脏）
+          required: true
+        - label: 线条闭合，没有大面积破口（破口会让颜色漏到隔壁）
+          required: true
+        - label: 背景没有栏杆、栅栏、书架、窗格这类密集线条
+          required: true
+        - label: 用同一段口播稿跑通过一遍 `build`，能出完整成片
+          required: true

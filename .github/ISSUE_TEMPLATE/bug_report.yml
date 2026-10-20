@@ -1,0 +1,92 @@
+name: 报一个翻车（出图 / 动画 / 字幕）
+description: 画面没听懂描述、画面太空、人物不像、涂色错位、字幕位置或文字有问题
+title: "[翻车] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先看一眼 [`SKILL.md`](https://github.com/sratour/xm-handdraw-video/blob/main/SKILL.md) 里
+        「有歧义的东西，必须写否定项」那节——大部分翻车是描述缺了否定项，不是代码问题。
+
+        下面每一项都尽量填，缺材料的单子基本没法定位。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 哪一步出的问题
+      options:
+        - 出图：画面内容和描述不符（画错了东西、多出人物、多出装饰）
+        - 出图：画面太空，大片留白没有道具
+        - 出图：人物脸 / 身材 / 服装和角色锚点不一致
+        - 动画：涂色错位、颜色漏到隔壁区域、色块没涂满
+        - 动画：勾线糊成一团（实心块变粗条纹）
+        - 动画：背景被整片跳过或四周留纸边
+        - 字幕：位置压到人物 / 超出安全区
+        - 字幕：断句不对、标点没清掉、字体没生效
+        - 成片：音画不同步、时长不对
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: style
+    attributes:
+      label: 用的画风 id
+      description: '`styles/` 里的文件名（不含 .md），例如 handdrawn-explainer'
+      placeholder: handdrawn-explainer
+    validations:
+      required: true
+
+  - type: textarea
+    id: cmd
+    attributes:
+      label: 完整命令
+      description: 把当时跑的那条命令贴上来，含所有参数
+      render: shell
+      placeholder: |
+        python scripts/xm_handdraw.py build \
+          --storyboard storyboard.json --workdir . \
+          --style handdrawn-explainer \
+          --character refs/char-full.png \
+          --video-size 720x1280 --paint-bg --margin 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: storyboard
+    attributes:
+      label: 出问题那一场的 storyboard 片段
+      description: 整场 JSON 贴上来，别只贴 subject 一行——`paint_bg`、`margin`、`image` 也会影响结果
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望画面 vs 实际画面
+      description: 用一句话说清「本来想画什么」和「实际画成了什么」
+      placeholder: |
+        期望：一辆三轮汽车，细钢管车架，没有车厢
+        实际：画成了四轮马车，还带布篷和马
+    validations:
+      required: true
+
+  - type: textarea
+    id: shots
+    attributes:
+      label: 出图结果截图
+      description: 把 `shots/scene_XX.png` 直接拖进这个框（会自动上传）。动画问题请再附一张成片抽帧
+      placeholder: 拖图片到这里，或粘贴截图
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: 环境自检输出
+      description: 跑 `python scripts/doctor.py` 把结果贴上来，能排除环境问题
+      render: shell
+    validations:
+      required: false

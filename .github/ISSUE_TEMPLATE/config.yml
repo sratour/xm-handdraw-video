@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 装不上 / 环境报错
+    url: https://github.com/sratour/xm-handdraw-video/blob/main/INSTALL.md
+    about: Python、ffmpeg、libass、密钥的安装步骤和常见问题表
+  - name: 在 Claude Code / Codex / Gemini CLI 里怎么用
+    url: https://github.com/sratour/xm-handdraw-video/blob/main/COMPATIBILITY.md
+    about: 各平台安装路径，以及网页版 GPTs / Gems 为什么跑不了
+  - name: 完整工作流和已知的坑
+    url: https://github.com/sratour/xm-handdraw-video/blob/main/SKILL.md
+    about: 主文档。出图翻车九成能在「有歧义的东西，必须写否定项」那节找到答案
