@@ -1,0 +1,4 @@
+# 运行依赖。HTTP 全部走标准库 urllib，不额外引 requests。
+Pillow>=10,<13
+numpy>=1.24,<3
+edge-tts>=7,<8

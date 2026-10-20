@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 渲染中间产物（体积大，且能随时重跑出来）
+*.mp4
+*.srt
+frames/
+project/
+*.json.tmp
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本地配置 / 密钥，绝不入库
+.env
+config.local.json
+*.local
