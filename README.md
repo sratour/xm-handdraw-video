@@ -34,6 +34,7 @@
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | 在 Claude Code / Codex / Gemini CLI / Cursor 里怎么装 |
 | [`SKILL.md`](SKILL.md) | 完整工作流和全部踩坑记录（**主文档**） |
 | [`AGENTS.md`](AGENTS.md) | 给认 AGENTS.md 的工具的入口 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么参与：报翻车、加画风、改代码 |
 
 装好后先跑一次自检，它会告诉你缺什么、该敲哪条命令：
 
@@ -127,6 +128,29 @@ project/
 ├── clips/scene_01.mp4   逐段手绘片段
 └── final.mp4            成片（字幕已烧录）
 ```
+
+### 复现上面预览图那套效果
+
+预览图和动图都是这套参数出的——竖版科普、满幅彩色插画、人物形象锁死：
+
+```bash
+python scripts/xm_handdraw.py build \
+  --storyboard storyboard.json \
+  --style handdrawn-explainer \
+  --character refs/char-full.png \
+  --video-size 720x1280 --paint-bg --margin 0 \
+  --voice zh-CN-YunxiNeural --rate "+10%" \
+  --workdir . -o final.mp4
+```
+
+两个容易漏的点：
+
+- **满幅插画必须同时给 `--paint-bg` 和 `--margin 0`**。不开前者，浅色墙面会被
+  `background_mask()` 判成纸底整片跳过（实测覆盖率只剩 47%）；不给后者，
+  `_fit()` 的 contain 缩放会留一圈 56px 纸边。两个都开才是 100%
+- **`--character` 和 `--anchor` 别混用**。前者锁人物（脸/发型/服装必须复刻），
+  后者只继承笔法。想「换画风但人物不变」，要按新画风**重画一张这个人的立绘**
+  再传给 `--character`，不能拿另一张现成锚点图顶替——那样人物就换了
 
 ### 分步跑（推荐：中间可以人工干预）
 
@@ -232,30 +256,40 @@ python scripts/xm_handdraw.py providers
 - 至少一个生图平台的密钥：**如果 Agnes 已经在 WorkBuddy 的模型设置里配过，
   这里会自动复用，无需额外配置**（见 `references/free-providers.md`）
 
-本机可用环境：
+不知道自己的环境缺什么，跑一次自检：
 
+```bash
+python scripts/doctor.py
 ```
-C:\Users\ABB\.workbuddy-ai\binaries\python\envs\default\Scripts\python.exe
-ffmpeg: C:\Users\ABB\bin\ffmpeg.exe
-```
+
+它逐项检查 Python 版本、`Pillow`/`numpy`/`edge-tts`、ffmpeg 及其 libass 支持、
+字幕字体 family 名、锚点图、生图密钥和目录写权限，**缺哪项直接给对应安装命令**。
+十项全绿才算装好。各平台安装路径见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。
 
 ## 目录
 
 ```
 xm-handdraw-video/
-├── SKILL.md                      技能说明（给 agent 读的工作流）
+├── SKILL.md                      ★ 主文档：完整工作流 + 全部踩坑记录
+├── AGENTS.md                     给认 AGENTS.md 的 agent（Codex/Cursor/Cline）的入口
+├── INSTALL.md                    换电脑安装：五步走
+├── COMPATIBILITY.md              各 agent 平台的安装路径与能力边界
+├── VERSION                       版本号（唯一真源，代码从这里读）
 ├── styles/                       ★ 画风配方，一个文件一个画风
 │   ├── handdrawn-explainer.md        手绘科普插画（科普默认）
 │   ├── digital-flat.md               平滑数码平涂（写实、干净、现代）
 │   ├── anime-jp-flat.md              日系动漫平涂（已带锚点图）
 │   └── retro-mystery-manga.md        九十年代周刊少年推理漫画
 ├── assets/
-│   └── anime-jp-flat/anchor.png  画风锚点图（同时是角色立绘）
+│   ├── anime-jp-flat/anchor.png  画风锚点图（同时是角色立绘）
+│   └── fonts/                    抖音美好体 + 许可副本（OFL 1.1）
 ├── references/
 │   ├── style-recipe-spec.md      配方怎么写（五段式规范）
+│   ├── prop-library.md           场景道具库（让画面不空）
 │   └── free-providers.md         生图平台对比与配置
+├── docs/                         README 用的预览图与逐笔动图
 ├── scripts/
-│   ├── xm_handdraw.py            CLI 入口（10 个子命令）
+│   ├── xm_handdraw.py            CLI 入口（11 个子命令）
 │   ├── providers.py              生图平台适配器
 │   ├── recipe.py                 配方解析与提示词渲染
 │   ├── scenes.py                 分镜数据结构与切分
@@ -263,9 +297,14 @@ xm-handdraw-video/
 │   ├── strokes.py                ★ 图片 → 笔画序列（骨架化 + 追踪）
 │   ├── paint.py                  ★ 色块 → 马克笔涂抹路径（PCA 扫描线）
 │   ├── render.py                 ★ 勾线 + 上色 → 逐帧渲染 → 片段 MP4
-│   └── compose.py                拼接 + 音轨 + 烧字幕 → 成片
-└── assets/<画风id>/anchor.png    锚点参考图（需自己生成）
+│   ├── compose.py                拼接 + 音轨 + 烧字幕 → 成片
+│   ├── check_subjects.py         出图前扫画面饱满度（`check` 子命令）
+│   └── doctor.py                 环境自检
+└── requirements.txt
 ```
+
+自己做的画风放在 `assets/<画风id>/anchor.png`，`assets/` 里现在只有
+`anime-jp-flat` 自带一张，其余画风需要自己生成锚点图。
 
 ## 自定义画风
 
@@ -345,7 +384,8 @@ PlayResY=288 的脚本，同样的 `FontSize=20` 在 720 高的横屏是 50px，
 
 - 模仿**画风**可以，复制受著作权保护的**具体角色形象**不行
 - 免费额度有限且规则会变，用之前先跑 `providers` 确认
-- 本机无独立显卡，本地跑扩散模型不现实
+- 出图交给第三方平台，本项目不做扩散推理 —— 所以**不需要显卡**，
+  一台只有 Python 的机器就能跑（渲染是纯 CPU 的几何与 ffmpeg 活）
 
 ## 许可
 
@@ -355,6 +395,14 @@ PlayResY=288 的脚本，同样的 `FontSize=20` 在 720 高的横屏是 50px，
 
 ## 参与
 
-- 有新画风想加：往 `styles/` 放一个 `.md`，按 `references/style-recipe-spec.md` 的结构写
-- 出图翻车了：`SKILL.md` 里「有歧义的东西，必须写否定项」那节记了已知的坑，欢迎补充
-- 提 PR 前先跑 `python scripts/doctor.py`，并确认 `build` 能出片
+见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。简单说：
+
+- **报翻车**：带上那一场的 `storyboard.json` 片段、出图结果、用的画风 id。
+  光说「画错了」没法修——问题九成出在 `subject` 描述不够
+- **加画风**：往 `styles/` 放一个 `.md`，按 `references/style-recipe-spec.md` 的五段式写，
+  抽卡挑锚点图，PR 里放成片截图
+- **改代码**：先 `python scripts/doctor.py` 十项全绿，再 `animate` 出一条 4 秒片段
+  验证渲染链没坏（不需要生图密钥）
+
+`CONTRIBUTING.md` 里还列了几个**刻意设计、别当 bug 改**的行为（背景默认不涂、
+竖版字幕在 70% 高度、`auto` 墨线偏向 `dark` 等），改之前先看一眼为什么这么定。
