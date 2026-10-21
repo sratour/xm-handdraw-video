@@ -106,13 +106,17 @@ def synth(text: str, out_mp3: str, voice: str = DEFAULT_VOICE,
 
 
 def synth_storyboard(sb: Storyboard, workdir: str, voice: str | None = None,
-                     rate: str = "+0%", verbose: bool = True) -> Storyboard:
+                     rate: str = "+0%", verbose: bool = True,
+                     reuse: bool = False) -> Storyboard:
     """
     逐场景合成配音，把每个场景的真实时长回填进分镜。
 
     为什么逐场景而不是整篇一次：
       场景与配音要严格一一对应，逐场景能得到**确定**的时长，不需要事后做文本对齐。
       代价是跨句语调衔接略弱于整篇生成；解释类视频里听不出来。
+
+    reuse=True 时，audio/ 里已有且非空的 mp3 直接复用、只回填时长。
+    默认 False（每次都重合成）是刻意的：改了文案却拿到旧音频，比多花两分钟糟糕得多。
     """
     v = voice or sb.voice or DEFAULT_VOICE
     adir = os.path.join(workdir, "audio")
@@ -120,6 +124,13 @@ def synth_storyboard(sb: Storyboard, workdir: str, voice: str | None = None,
 
     for s in sb.scenes:
         out = os.path.join(adir, f"{s.id}.mp3")
+        if reuse and os.path.isfile(out) and os.path.getsize(out) > 2048:
+            dur = probe_duration(out) or s.duration
+            s.audio = out
+            s.duration = round(dur, 3)
+            if verbose:
+                print(f"[voice] {s.id}  {s.duration:6.2f}s  复用已有音频  {s.text[:28]}")
+            continue
         # 单场景可以覆盖语速：总结句、字幕卡这类地方需要放慢
         r = synth(s.text, out, voice=v, rate=s.rate or rate)
         s.audio = out

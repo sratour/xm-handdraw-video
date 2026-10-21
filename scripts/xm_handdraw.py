@@ -28,7 +28,7 @@ from render import attach_motion, make_colored_video, make_motion, make_video  #
 from scenes import Storyboard  # noqa: E402
 from strokes import build_strokes  # noqa: E402
 
-VERSION = "0.14.1"
+VERSION = "0.15.0"
 
 
 def _read_version_file() -> str:
@@ -273,7 +273,8 @@ def cmd_voice(a):
         for e in errs:
             print("   -", e, file=sys.stderr)
         sys.exit(1)
-    narration_mod.synth_storyboard(sb, a.workdir, voice=a.voice or sb.voice, rate=a.rate)
+    narration_mod.synth_storyboard(sb, a.workdir, voice=a.voice or sb.voice,
+                                   rate=a.rate, reuse=a.reuse_voice)
     sb.save()
     srt = narration_mod.write_subtitles(sb, os.path.join(a.workdir, "subtitles.srt"))
     print(f"分镜已回填时长：{a.storyboard}")
@@ -338,7 +339,8 @@ def cmd_build(a):
 
     # ① 配音
     print("\n=== ① 配音 ===")
-    narration_mod.synth_storyboard(sb, wd, voice=sb.voice, rate=a.rate)
+    narration_mod.synth_storyboard(sb, wd, voice=sb.voice, rate=a.rate,
+                                   reuse=a.reuse_voice)
     sb.save()
 
     # ② 出图
@@ -526,6 +528,8 @@ def build_parser() -> argparse.ArgumentParser:
     vo.add_argument("--workdir", default=".")
     vo.add_argument("--voice", help="音色 ShortName，如 zh-CN-YunxiNeural")
     vo.add_argument("--rate", default="+0%")
+    vo.add_argument("--reuse-voice", action="store_true",
+                    help="audio/ 里已有配音就复用、只回填时长。改了文案别用")
     vo.set_defaults(func=cmd_voice)
 
     bd = sub.add_parser("build", help="全流程：分镜 → 配音 → 出图 → 动画 → 合成")
@@ -567,7 +571,11 @@ def build_parser() -> argparse.ArgumentParser:
     common_render(bd)
     bd.add_argument("--keep-srt", action="store_true", help="保留 SRT 文件（默认删掉避免双字幕）")
     bd.add_argument("--subtitle-pos", type=float,
-                    help="字幕底边距画面底部的比例 0~1。默认竖屏 2/3、横屏/方形 0.055")
+                    help="字幕底边距画面底部的比例 0~1。默认竖屏 0.30（距底 30%%，"
+                         "即画面 70%% 高度）、横屏/方形 0.055。想放到画面 25%% 高度就传 0.75")
+    bd.add_argument("--reuse-voice", action="store_true",
+                    help="audio/ 里已有配音就复用、只回填时长（改画面不想重新配音时用）。"
+                         "改了文案别用，会拿到旧音频")
     bd.set_defaults(func=cmd_build)
 
     return ap
