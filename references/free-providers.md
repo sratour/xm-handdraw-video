@@ -1,5 +1,9 @@
 # 免费生图平台
 
+> 这份文档只讲**免费**选项——零成本够用。想换成收费平台（更高质量、更快、无额度限制）
+> 完全可以，在 `~/.xm-handdraw/config.json` 里加对应 key，再在 `scripts/providers.py`
+> 里加一个适配器类即可，渲染和画风不受影响。
+
 密钥读取顺序：**环境变量 → `~/.xm-handdraw/config.json` → WorkBuddy 的 `~/.workbuddy-ai/models.json`**。
 
 最后一级是为了复用你已经配好的服务——比如 Agnes 的 Key 如果已经在

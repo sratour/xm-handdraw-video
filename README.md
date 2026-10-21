@@ -266,6 +266,32 @@ python scripts/doctor.py
 字幕字体 family 名、锚点图、生图密钥和目录写权限，**缺哪项直接给对应安装命令**。
 十项全绿才算装好。各平台安装路径见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。
 
+### 测试范围：只在 Windows 上验证过
+
+所有出片验证都在 **Windows 11** 上完成。代码做了跨平台处理——ffmpeg 走
+`which` 查找（不写死路径）、`subprocess` 统一 UTF-8 编码（防 Windows GBK 解码炸）、
+路径用 `os.path.join`——但 **macOS 和 Linux 没有实测过**。
+
+在 macOS / Linux 上大概率能跑。跑不通请提 Issue，那正是最需要的反馈。
+
+### 默认链路完全免费，但不绑定平台
+
+| 环节 | 默认用什么 | 花钱吗 |
+|---|---|---|
+| 生图 | Agnes / ModelScope / 智谱 Flash | **免费**，有额度限制 |
+| 配音 | Edge TTS | **免费**，不需要 Key |
+| 渲染合成 | 本地 ffmpeg | **免费**，纯 CPU |
+
+零成本就能出完整成片。但代码没有绑死这几家：
+
+- **生图**：`scripts/providers.py` 是适配器结构，加平台就是加一个类。
+  想换成收费的 Midjourney / Flux，或本地部署 SD，只要能返回图片就能接
+- **配音**：字幕时间轴来自 TTS 的词级时间戳，换平台时对齐这个接口即可。
+  ElevenLabs、Azure、火山这些音质更好的都能换
+- 已有收费平台账号的，在 `~/.xm-handdraw/config.json` 里填 key 就能用
+
+**换平台不影响画风和动画**——画风由静态图决定，动画层只认像素。
+
 ## 目录
 
 ```

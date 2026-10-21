@@ -4,6 +4,10 @@
 但「能读规范」和「能跑起来」是两件事——这个 Skill 要执行 Python 和 ffmpeg，
 所以**只有能跑本地命令的 agent 才完整可用**。
 
+> **实测范围**：本项目只在 **Windows 11** 上验证过完整出片流程。
+> 下面关于 macOS / Linux 和各 agent 平台的判断，依据是这些平台的能力文档
+> 和代码里的跨平台处理，**不是实测结果**。跑通了欢迎反馈，跑不通也欢迎提 Issue。
+
 ## 一句话结论
 
 | 平台 | 能跑吗 | 原因 |
@@ -74,7 +78,7 @@ git clone https://github.com/sratour/xm-handdraw-video.git ~/.claude/skills/xm-h
    Windows 必须下 **full** 版。
 2. **装在奇怪路径时**设 `FFMPEG_BIN` 环境变量指过去，脚本会优先用它。
 3. **字体不用装进系统**。`assets/fonts/` 里的字体通过 libass 的 `fontsdir`
-   直接加载，Windows / macOS / Linux 都一样。
+   直接加载。这是 libass 本身的能力，各平台应当一致，但本项目只在 Windows 上验证过。
 
 ## 换电脑 / 换平台后的自检
 

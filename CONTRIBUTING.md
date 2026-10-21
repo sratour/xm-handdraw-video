@@ -70,7 +70,9 @@ python scripts/xm_handdraw.py check --storyboard storyboard.json
 
 ### 跨平台注意
 
-项目在 Windows / macOS / Linux 都要能跑，改动时注意：
+**目标**是 Windows / macOS / Linux 都能跑，但**目前只在 Windows 上实测过**。
+改动时请按跨平台标准写，别引入只在 Windows 成立的写法——同时也欢迎你在
+macOS / Linux 上跑一遍，把结果（成不成、报什么错）告诉作者，这比改代码更有用：
 
 - **不要写死 ffmpeg 路径**，走 `render.find_ffmpeg()`（`FFMPEG_BIN` 环境变量 → `which` → 各平台常见位置）
 - **`subprocess.run` 一律带 `encoding="utf-8", errors="replace"`**。Windows 默认 GBK，
