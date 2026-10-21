@@ -202,8 +202,21 @@ _STRIP = "，。！？；：、,.!?;:…‥—–－·\"'“”‘’（）()《
 
 
 def strip_punct(text: str) -> str:
-    """去掉字幕里所有标点，只留文字、数字、字母。"""
-    return "".join(ch for ch in text if ch not in _STRIP)
+    """去掉字幕里所有标点，只留文字、数字、字母。
+
+    英文单词之间的半角空格要留下：「Small Cell」洗成「SmallCell」就是一个
+    不存在的词了。中文里的空格照删——中文字幕本来也不该有空格。
+    """
+    out: list[str] = []
+    for i, ch in enumerate(text):
+        if ch not in _STRIP:
+            out.append(ch)
+        elif ch == " ":
+            prev = text[i - 1] if i > 0 else ""
+            nxt = text[i + 1] if i + 1 < len(text) else ""
+            if prev.isascii() and prev.isalnum() and nxt.isascii() and nxt.isalnum():
+                out.append(ch)
+    return "".join(out)
 
 
 def _clauses(text: str) -> list[str]:
