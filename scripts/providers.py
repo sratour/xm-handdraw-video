@@ -365,8 +365,10 @@ def generate(prompt: str, out_path: str, provider: str = "auto",
             last_err = e
             print(f"[warn] {name} 失败：{e}", file=sys.stderr)
     raise ProviderError(
-        f"没有可用的生图平台。最后一个错误：{last_err}\n"
-        f"提示：先设置密钥，或临时用 --provider local 跑通管线。"
+        f"所有生图平台都失败了。最后一个错误：{last_err}\n"
+        f"常见原因有三种：密钥没配、额度用尽、并发太高被限流。\n"
+        f"先跑 `xm_handdraw.py providers` 看密钥状态；只想跑通管线可以临时用 --provider local。\n"
+        f"限流的话把并行路数降到 1~2 再试，别一上来就开 4 路。"
     )
 
 
