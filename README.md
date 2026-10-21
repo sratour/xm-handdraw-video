@@ -406,3 +406,16 @@ PlayResY=288 的脚本，同样的 `FontSize=20` 在 720 高的横屏是 50px，
 
 `CONTRIBUTING.md` 里还列了几个**刻意设计、别当 bug 改**的行为（背景默认不涂、
 竖版字幕在 70% 高度、`auto` 墨线偏向 `dark` 等），改之前先看一眼为什么这么定。
+
+## 鸣谢
+
+感谢 [@leo_xiaolei](https://x.com/leo_xiaolei) 的
+[sweety-handdraw-video](https://github.com/threerocks/sweety-handdraw-video) 项目。
+
+## 支持与反馈
+
+- 觉得有帮助，给仓库点一个 **Star**
+- 生成结果和遇到的问题，欢迎附上**版本号**（`python scripts/xm_handdraw.py --version`）、
+  **运行环境**（`python scripts/doctor.py` 的输出）和**可复现片段**，提交
+  [Issue](https://github.com/sratour/xm-handdraw-video/issues/new/choose)
+- 任何意见可以联络 [@planxyou](https://x.com/planxyou)
