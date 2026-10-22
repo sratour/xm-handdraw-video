@@ -134,6 +134,36 @@ def background_mask(rgb: np.ndarray, colors: int = 6, edge_ratio: float = 0.5) -
     return pal == top
 
 
+def _tile_importance(rgb: np.ndarray, ink_mask: np.ndarray,
+                     tx: int, ty: int, tw: int, th: int,
+                     W: int, H: int) -> float:
+    """一个格子的「重要性」——决定上色时先涂谁。
+
+    三项加权，权重是试出来的：
+
+    - 颜色饱和度（0.50）：主体（车漆、皮肤、衣服）饱和度高，
+      墙面、路面、天空都很灰。但**背景里的绿树饱和度也高**，
+      光靠饱和度会让树排到人物前面，所以要配合中心度。
+    - 墨线密度（0.13）：细节多的区域分高，但**线条多不等于主体**——
+      路灯杆、栏杆、窗格同样线条密。权重给大了会把路灯杆排到前面去。
+    - 中心度（0.37）：主体通常居中。这一项也是压住「边缘绿植」的关键。
+
+    只用于 order="importance"，默认的 "scan" 不调这个函数。
+    """
+    sub = rgb[ty:ty + th, tx:tx + tw].astype(np.float32)
+    mx = sub.max(axis=2)
+    mn = sub.min(axis=2)
+    sat = float(((mx - mn) / np.maximum(mx, 1)).mean())
+
+    dens = float(ink_mask[ty:ty + th, tx:tx + tw].mean()) * 4.0
+
+    cx, cy = tx + tw / 2, ty + th / 2
+    dist = float(np.hypot(cx - W / 2, cy - H / 2) / np.hypot(W / 2, H / 2))
+    center = 1.0 - min(1.0, dist)
+
+    return 0.50 * sat + 0.13 * min(dens, 1.0) + 0.37 * center
+
+
 def build_paint_paths(
     ink_mask: np.ndarray,
     rgb: np.ndarray | None = None,
@@ -142,6 +172,7 @@ def build_paint_paths(
     brush_radius: float | None = None,
     ink_pad: int = 2,
     skip_background: bool = True,
+    order: str = "scan",
 ) -> list[tuple[np.ndarray, float]]:
     """
     墨线掩膜 → 涂抹路径。
@@ -152,6 +183,14 @@ def build_paint_paths(
 
     skip_background 打开时会跳过背景色区域（见 background_mask），
     让涂色时间集中在主体上，画面保持「白纸 + 彩色主体」的手绘感。
+
+    order 控制**先涂谁**：
+
+    - "scan"（默认）：按格子从上到下、从左到右涂。跟画面内容无关，
+      主体在画面下半部时必然最后才上色。
+    - "importance"：按 _tile_importance 打分，饱和度高的格子先涂。
+      主体（人物、车、产品）会比环境（墙、路、栏杆）早出颜色，
+      观众不用等到最后才看见彩色主体。
     """
     h, w = ink_mask.shape
     fillable = ~dilate3(ink_mask, ink_pad)
@@ -159,6 +198,7 @@ def build_paint_paths(
         fillable &= ~background_mask(rgb)
 
     paths: list[tuple[np.ndarray, float]] = []
+    scores: dict[tuple[int, int], float] = {}
     region_id = 0
     for ty in range(0, h, tile):
         for tx in range(0, w, tile):
@@ -170,4 +210,16 @@ def build_paint_paths(
             for pts, radius in scanline_paths(sub, radius=brush_radius,
                                               region_id=region_id):
                 paths.append((pts + offset, radius))
+            if order == "importance" and rgb is not None:
+                tw, th = min(tile, w - tx), min(tile, h - ty)
+                scores[(tx, ty)] = _tile_importance(rgb, ink_mask, tx, ty, tw, th, w, h)
+
+    if order == "importance" and scores:
+        def _rank(item: tuple[np.ndarray, float]) -> float:
+            pts = item[0]
+            cx = int(pts[:, 0].mean() // tile) * tile
+            cy = int(pts[:, 1].mean() // tile) * tile
+            return -scores.get((cx, cy), 0.0)
+
+        paths.sort(key=_rank)
     return paths

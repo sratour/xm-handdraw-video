@@ -178,6 +178,7 @@ def _render_one(a, image: str, out: str, duration: float, hold: float,
         res = make_colored_video(
             image, base, duration=duration, hold=hold,
             ink_ratio=a.ink_ratio, tile=a.tile,
+            paint_order=getattr(a, "paint_order", "importance"),
             skip_background=not paint_bg, **kw)
 
     if not after:
@@ -435,6 +436,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="勾线占总时长的比例，剩下的时间用来上色")
         sp.add_argument("--tile", type=int, default=220,
                         help="上色扫描的网格大小，越小笔触越细")
+        sp.add_argument("--paint-order", choices=["scan", "importance"], default="importance",
+                        help="上色顺序。importance（默认）：先涂颜色饱和度高的格子，也就是主体，"
+                             "主体在画面下半部时不会等到最后才出颜色；"
+                             "scan：按画面位置从上到下涂，主体可能最后才上色")
         sp.add_argument("--paint-bg", action="store_true",
                         help="连背景一起涂（默认只涂主体，背景保持白纸）")
         sp.add_argument("--motion",

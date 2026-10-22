@@ -288,6 +288,7 @@ def render_colored(
     tile: int = 220,
     brush_radius: float | None = None,
     skip_background: bool = True,
+    paint_order: str = "scan",
     pen_tip: bool = True,
     pen_color: tuple[int, int, int] = (214, 69, 65),
     paper: tuple[int, int, int] | None = None,
@@ -343,7 +344,8 @@ def render_colored(
     if ink_mask is not None:
         for pts, radius in build_paint_paths(ink_mask, rgb=rgb, tile=tile,
                                              brush_radius=brush_radius,
-                                             skip_background=skip_background):
+                                             skip_background=skip_background,
+                                             order=paint_order):
             paint_paths.append((pts, max(2.0, radius * scale)))
 
     has_paint = bool(paint_paths)
