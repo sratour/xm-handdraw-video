@@ -13,8 +13,10 @@ compose.py — 把逐场景的手绘片段合成为成片
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from render import find_ffmpeg
@@ -187,6 +189,20 @@ def mux(video: str, audio: str, out_path: str,
     return out_path
 
 
+def media_duration(path: str) -> float:
+    """读成片容器的实际时长（秒）。用来核对音画有没有错位。"""
+    exe = find_ffmpeg()
+    if not exe or not os.path.isfile(path):
+        return 0.0
+    p = subprocess.run([exe, "-hide_banner", "-i", path],
+                       capture_output=True, text=True, errors="replace")
+    m = re.search(r"Duration: (\d+):(\d+):(\d+\.\d+)", p.stderr or "")
+    if not m:
+        return 0.0
+    h, mi, s = m.groups()
+    return int(h) * 3600 + int(mi) * 60 + float(s)
+
+
 def build_film(sb: Storyboard, out_path: str, workdir: str,
                burn_subtitles: bool = True, keep_srt: bool = False,
                video_size: tuple[int, int] | None = None,
@@ -232,8 +248,16 @@ def build_film(sb: Storyboard, out_path: str, workdir: str,
                 os.remove(srt)
             except OSError:
                 pass
+
+        # 音画自检：视频比音轨短时 -shortest 会把片尾旁白剪掉，必须喊出来
+        real = media_duration(out_path)
+        plan = sb.total_duration()
+        if real and plan - real > 0.15:
+            print(f"[warn] 成片 {real:.2f}s 比分镜计划 {plan:.2f}s 短 {plan - real:.2f}s，"
+                  f"片尾旁白可能被剪掉；检查各片段长度是否都等于 duration+gap",
+                  file=sys.stderr)
         return {"video": os.path.abspath(out_path), "srt": srt if keep_srt else None,
-                "burned": burn, "duration": round(sb.total_duration(), 2)}
+                "burned": burn, "duration": round(plan, 2)}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

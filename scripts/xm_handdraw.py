@@ -14,21 +14,25 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import painters  # noqa: E402
 import providers  # noqa: E402
 import recipe as recipe_mod  # noqa: E402
 import compose as compose_mod  # noqa: E402
 import narration as narration_mod  # noqa: E402
 import check_subjects as check_mod  # noqa: E402
+import char_lib  # noqa: E402
 from render import attach_motion, make_colored_video, make_motion, make_video  # noqa: E402
 from scenes import Storyboard  # noqa: E402
 from strokes import build_strokes  # noqa: E402
 
-VERSION = "0.15.0"
+VERSION = "0.16.0"
 
 
 def _read_version_file() -> str:
@@ -59,6 +63,20 @@ def cmd_providers(a):
     print("图生图会让模型照搬参考图内容，配方里「只继承风格、不复制内容」那句必须写清楚。")
 
 
+def cmd_painters(a):
+    """列出所有上色方式（--paint-order 的可选值）。"""
+    default = "object"
+    print("上色方式（--paint-order 可选值，英文或中文别名都行）：\n")
+    for name, p in painters.REGISTRY.items():
+        mark = "（默认）" if name == default else ""
+        alias = f"  别名：{p.label}" if p.label and p.label != name else ""
+        print(f"  {name:<11}{mark}{alias}")
+        print(f"              {p.desc}\n")
+    print("分镜里也能单场覆盖：{\"id\": \"scene_03\", \"paint_order\": \"scan\"}")
+    print("（分镜里的 paint_order 同样认英文主名或中文别名）")
+    return 0
+
+
 def cmd_styles(a):
     recs = {r.id: r for r in recipe_mod.load_all().values()}
     if not recs:
@@ -69,7 +87,7 @@ def cmd_styles(a):
         ap = v.anchor_path
         print(f"  {k:<24} {v.name}")
         print(f"  {'':<24} 别名：{'、'.join(v.aliases) or '—'}")
-        print(f"  {'':<24} 锚点：{'✓ ' + os.path.relpath(ap, recipe_mod.SKILL_ROOT) if ap else '✗ 未就绪'}")
+        print(f"  {'':<24} 锚点：{'✓ ' + _rel(ap) if ap else '✗ 未就绪'}")
         print(f"  {'':<24} 配方哈希：{v.sha256()[:16]}")
         print()
 
@@ -86,16 +104,34 @@ def cmd_prompt(a):
         print(f"\n[已写入 {a.out}]")
 
 
+def _rel(p: str) -> str:
+    """相对技能根目录的路径，用于日志。
+
+    Windows 上路径跨盘符（技能在 C:、项目在 D:）时 relpath 会抛 ValueError，
+    这里退回原路径——日志里显示绝对路径总比整个命令崩掉好。
+    """
+    try:
+        return os.path.relpath(p, recipe_mod.SKILL_ROOT)
+    except ValueError:
+        return p
+
+
 def _resolve_ref(a, r) -> tuple[str | None, str]:
     """决定这一轮生图带哪张参考图，以及它该怎么用。
 
     用户给的 --character 优先：那是「固定角色设定图」，要求复刻长相与着装；
     配方自带的 anchor 是「画风锚点」，只继承笔法、不继承人物。
+
+    `--character` 除了给图片路径，也可以给角色库里的 id（`office-lady`
+    或 `office-lady:02`），由 char_lib 解析成具体姿态图。
     """
     char = getattr(a, "character", None)
     if char:
+        char = char_lib.resolve(char) or char
         if not os.path.isfile(char):
             print(f"[错误] 找不到角色参考图 {char}", file=sys.stderr)
+            print(f"       角色库现有：{', '.join(c['id'] for c in char_lib.all_chars()) or '空'}",
+                  file=sys.stderr)
             sys.exit(1)
         return char, "character"
     if getattr(a, "no_ref", False):
@@ -118,7 +154,7 @@ def _gen_image(a) -> str:
             f.write(prompt + "\n")
     if ref:
         kind = "角色" if ref_mode == "character" else "画风"
-        print(f"[draw] 画风 {r.id}｜{kind}参考图 {os.path.relpath(ref, recipe_mod.SKILL_ROOT)}")
+        print(f"[draw] 画风 {r.id}｜{kind}参考图 {_rel(ref)}")
     else:
         print(f"[draw] 画风 {r.id}｜无参考图（纯提示词）")
     return providers.generate(prompt, a.out, provider=a.provider, size=a.size,
@@ -139,6 +175,7 @@ def _video_kwargs(a, scene=None) -> dict:
         margin=margin, ink_mode=a.ink_mode, threshold=a.threshold,
         invert=a.invert, pen_tip=not a.no_pen, max_side=a.max_side,
         crop=not a.no_crop, blob_thickness=a.blob_thickness,
+        paint_focus=(scene.paint_focus if scene is not None else None),
     )
 
 
@@ -156,8 +193,11 @@ def _render_one(a, image: str, out: str, duration: float, hold: float,
         motion = scene.motion
     if motion:
         sid = getattr(scene, "id", "") or os.path.basename(image)
+        # make_motion 的 --duration 是**总长**，hold 只是其中静止的那一段。
+        # 而这里传进来的 duration 是「画/动」的时长（总长已经减掉 hold），
+        # 所以要把 hold 加回去，否则这一段会比音轨短一个 hold，后面全线错位。
         return make_motion(
-            image, out, duration=duration, hold=hold,
+            image, out, duration=duration + hold, hold=hold,
             size=kw["size"], fps=kw["fps"], motion=motion,
             zoom=float(getattr(a, "zoom", 1.12) or 1.12),
             seed=sum(ord(c) for c in sid),
@@ -172,13 +212,17 @@ def _render_one(a, image: str, out: str, duration: float, hold: float,
         base = out + ".base.mp4"
 
     paint_bg = a.paint_bg or bool(scene is not None and scene.paint_bg)
+    # 上色方式：分镜里的 paint_order 优先，其次命令行 --paint-order
+    paint_order = getattr(a, "paint_order", "object")
+    if scene is not None and getattr(scene, "paint_order", ""):
+        paint_order = scene.paint_order
     if a.mono:
         res = make_video(image, base, duration=duration, hold=hold, **kw)
     else:
         res = make_colored_video(
             image, base, duration=duration, hold=hold,
             ink_ratio=a.ink_ratio, tile=a.tile,
-            paint_order=getattr(a, "paint_order", "importance"),
+            paint_order=paint_order,
             skip_background=not paint_bg, **kw)
 
     if not after:
@@ -237,6 +281,17 @@ def cmd_check(a):
     for sid, level, notes in rows:
         mark = {"ok": "✓", "thin": "△", "empty": "✗", "skip": "–"}[level]
         print(f"{mark} {sid:10s} {level:5s}  {'；'.join(notes)}")
+
+    # 构图提醒：桌面／左右并排的描述模型会画成横构图，竖画布上下留白
+    hints = [(sc.get("id", "?"), check_mod.layout_hint(sc.get("subject", "")))
+             for sc in sb.get("scenes", [])]
+    hints = [(i, h) for i, h in hints if h]
+    if hints:
+        print()
+        print(f"构图提醒（{len(hints)} 场，不影响饱满度评级）：")
+        for i, h in hints:
+            print(f"  - {i}：{h}")
+
     print()
     if not bad:
         print(f"全部 {len(rows)} 场画面都够饱满。")
@@ -275,11 +330,57 @@ def cmd_voice(a):
             print("   -", e, file=sys.stderr)
         sys.exit(1)
     narration_mod.synth_storyboard(sb, a.workdir, voice=a.voice or sb.voice,
-                                   rate=a.rate, reuse=a.reuse_voice)
+                                   rate=a.rate, reuse=a.reuse_voice,
+                                   pitch=getattr(a, "pitch", "+0Hz"))
     sb.save()
     srt = narration_mod.write_subtitles(sb, os.path.join(a.workdir, "subtitles.srt"))
     print(f"分镜已回填时长：{a.storyboard}")
     print(f"字幕预览：{srt}")
+
+
+def _count_frames(path: str) -> int:
+    from render import find_ffmpeg
+    exe = find_ffmpeg()
+    if not exe:
+        return 0
+    p = subprocess.run([exe, "-hide_banner", "-i", path, "-map", "0:v", "-f", "null", "-"],
+                       capture_output=True, text=True, errors="replace")
+    m = re.findall(r"frame=\s*(\d+)", p.stderr or "")
+    return int(m[-1]) if m else 0
+
+
+def _pad_to_frames(path: str, seconds: float, fps: int) -> None:
+    """把片段补齐/裁齐到 round(seconds*fps) 帧，让每段严格等于分镜时间轴。
+
+    渲染端按帧取整，逐笔片段每段会少 1 帧；镜头运动再多差一个 hold。
+    单看每段无所谓，但 13 段累积下来视频就比音轨短——合成时 `-shortest`
+    会把片尾还没说完的旁白直接剪掉，而且越往后字幕越对不上口型。
+    这里以末帧为素材补齐（tpad=clone），不影响「画完定住」的观感。
+    """
+    from render import find_ffmpeg
+    exe = find_ffmpeg()
+    if not exe or not os.path.isfile(path):
+        return
+    want = max(1, round(seconds * fps))
+    have = _count_frames(path)
+    if have == want:
+        return
+    diff = want - have
+    vf = "null"
+    if diff > 0:
+        vf = f"tpad=stop_mode=clone:stop_duration={diff / fps + 0.1:.3f}"
+    tmp = path + ".pad.mp4"
+    p = subprocess.run([exe, "-y", "-loglevel", "error", "-i", path, "-vf", vf,
+                        "-frames:v", str(want), "-r", str(fps),
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "16",
+                        "-pix_fmt", "yuv420p", tmp],
+                       capture_output=True, text=True, errors="replace")
+    if p.returncode != 0:
+        if os.path.isfile(tmp):
+            os.remove(tmp)
+        print(f"[warn] {os.path.basename(path)} 对齐帧数失败，保持原样", file=sys.stderr)
+        return
+    os.replace(tmp, path)
 
 
 def _render_scene_clip(sb, scene, a, hold: float):
@@ -287,7 +388,12 @@ def _render_scene_clip(sb, scene, a, hold: float):
     clip_len = scene.duration + sb.gap
     hold = scene.hold or hold
     dur = max(0.8, clip_len - hold)
-    return _render_one(a, scene.image, scene.clip, dur, hold, scene=scene)
+    out = _render_one(a, scene.image, scene.clip, dur, hold, scene=scene)
+    # 开了 --after-motion 的片段本来就比 clip_len 长一截，别把它裁掉
+    after = getattr(a, "after_motion", None) or getattr(scene, "after_motion", "")
+    extra = float(getattr(a, "after_duration", 2.0) or 2.0) if after else 0.0
+    _pad_to_frames(out, clip_len + extra, a.fps)
+    return out
 
 
 def cmd_build(a):
@@ -400,6 +506,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("providers", help="查看生图平台密钥状态").set_defaults(func=cmd_providers)
     sub.add_parser("styles", help="列出画风配方").set_defaults(func=cmd_styles)
+    sub.add_parser("painters", help="列出上色方式（--paint-order 可选值）").set_defaults(
+        func=cmd_painters)
 
     p = sub.add_parser("prompt", help="只渲染提示词，不调模型")
     p.add_argument("--style", required=True)
@@ -436,10 +544,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="勾线占总时长的比例，剩下的时间用来上色")
         sp.add_argument("--tile", type=int, default=220,
                         help="上色扫描的网格大小，越小笔触越细")
-        sp.add_argument("--paint-order", choices=["scan", "importance"], default="importance",
-                        help="上色顺序。importance（默认）：先涂颜色饱和度高的格子，也就是主体，"
-                             "主体在画面下半部时不会等到最后才出颜色；"
-                             "scan：按画面位置从上到下涂，主体可能最后才上色")
+        sp.add_argument("--paint-order", choices=painters.choices(),
+                        default="object",
+                        help="上色顺序。默认 object（别名：按物体涂）：色块并成物体，"
+                             "一个物体涂完再下一个，顺序由分镜的 paint_focus 按口播走，"
+                             "纸面最后。其余取值可用英文主名或中文别名，"
+                             "用 `painters` 子命令查看全部")
         sp.add_argument("--paint-bg", action="store_true",
                         help="连背景一起涂（默认只涂主体，背景保持白纸）")
         sp.add_argument("--motion",
@@ -533,6 +643,8 @@ def build_parser() -> argparse.ArgumentParser:
     vo.add_argument("--workdir", default=".")
     vo.add_argument("--voice", help="音色 ShortName，如 zh-CN-YunxiNeural")
     vo.add_argument("--rate", default="+0%")
+    vo.add_argument("--pitch", default="+0Hz",
+                    help="音高，如 -12Hz。压低一点更像「稳重」的成年女声")
     vo.add_argument("--reuse-voice", action="store_true",
                     help="audio/ 里已有配音就复用、只回填时长。改了文案别用")
     vo.set_defaults(func=cmd_voice)
@@ -565,7 +677,8 @@ def build_parser() -> argparse.ArgumentParser:
     bd.add_argument("--width", type=int, default=3)
     bd.add_argument("--margin", type=int, default=56)
     bd.add_argument("--max-side", type=int, default=1100)
-    bd.add_argument("--hold", type=float, default=0.8, help="每段画完后停留的秒数")
+    bd.add_argument("--hold", type=float, default=0.35,
+                    help="每段画完后停留的秒数（从片段里扣，不额外加长；0.35 是实测比较跟手的值）")
     bd.add_argument("--ink-mode", default="auto", choices=["auto", "dark", "edge"])
     bd.add_argument("--threshold", type=int)
     bd.add_argument("--invert", action="store_true")

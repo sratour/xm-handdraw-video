@@ -69,6 +69,11 @@ class Scene:
     subtitle_off: bool = False  # 本场不出字幕（画面本身就是字幕卡）
     motion: str = ""          # 本场改用镜头运动：in/out/pan-lr/pan-ud/auto；空则逐笔绘制
     after_motion: str = ""    # 本场绘制完成后再接的收尾运动（breathe 最自然）
+    # 上色焦点：按口播顺序给 1-3 个归一化框 [x0,y0,x1,y1]（0~1），
+    # 框里的物体先涂。例如讲「人」的那场先涂人物所在的框，再涂车、房。
+    paint_focus: list = field(default_factory=list)
+    # 本场改用哪种上色方式（object / importance / scan），空则跟命令行
+    paint_order: str = ""
     audio: str = ""
     image: str = ""
     clip: str = ""
@@ -87,7 +92,9 @@ class Storyboard:
     title: str = ""
     style: str = ""
     voice: str = "zh-CN-YunxiNeural"
-    gap: float = 0.35
+    # 场景之间的停顿。配音尾巴已经剪到 0.15s，这里只要留一个换气的口子，
+    # 再大就会让镜头之间「断开」（实测 0.35 时每个切点有 1.3s 死区）。
+    gap: float = 0.12
     scenes: list[Scene] = field(default_factory=list)
     path: str = ""
 
@@ -116,7 +123,7 @@ class Storyboard:
         sb = Storyboard(
             title=d.get("title", ""), style=d.get("style", ""),
             voice=d.get("voice", "zh-CN-YunxiNeural"),
-            gap=float(d.get("gap", 0.35)), scenes=scenes, path=path,
+            gap=float(d.get("gap", 0.12)), scenes=scenes, path=path,
         )
         return sb
 
@@ -202,21 +209,30 @@ _STRIP = "，。！？；：、,.!?;:…‥—–－·\"'“”‘’（）()《
 
 
 def strip_punct(text: str) -> str:
-    """去掉字幕里所有标点，只留文字、数字、字母。
+    """把字幕里的标点换成空格，只留文字、数字、字母。
+
+    以前是直接把标点删掉，结果两个短句会粘成一句病句：
+    「存钱的哭」+「至于咱们身边」→「存钱的哭至于咱们身边」。
+    现在换成空格，断句的位置留了个口子，读起来顺得多。
 
     英文单词之间的半角空格要留下：「Small Cell」洗成「SmallCell」就是一个
-    不存在的词了。中文里的空格照删——中文字幕本来也不该有空格。
+    不存在的词了。连续标点（——……）只留一个空格。
     """
     out: list[str] = []
     for i, ch in enumerate(text):
         if ch not in _STRIP:
             out.append(ch)
-        elif ch == " ":
-            prev = text[i - 1] if i > 0 else ""
-            nxt = text[i + 1] if i + 1 < len(text) else ""
-            if prev.isascii() and prev.isalnum() and nxt.isascii() and nxt.isalnum():
-                out.append(ch)
-    return "".join(out)
+            continue
+        prev = text[i - 1] if i > 0 else ""
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        if ch == " " and prev.isascii() and prev.isalnum() and nxt.isascii() and nxt.isalnum():
+            out.append(ch)
+            continue
+        out.append(" ")
+    s = "".join(out)
+    while "  " in s:
+        s = s.replace("  ", " ")
+    return s.strip()
 
 
 def _clauses(text: str) -> list[str]:
@@ -272,9 +288,13 @@ def split_cues(text: str, max_chars: int = 18) -> list[str]:
     if cur:
         cues.append(cur)
 
-    # 收尾太短就并回上一屏，避免最后闪一个字
+    # 收尾太短就并回上一屏，避免最后闪一个字。
+    # 注意：必须先把尾巴 pop 出来再拼。写成 `cues[-2] += cues.pop()` 会出事——
+    # 负索引在 pop 之后指向的是另一个元素，结果把拼接值写到了上一屏身上，
+    # 导致字幕整条重复（实测：两句并成「A、A的前半段」）。
     if len(cues) >= 2 and len(cues[-1]) < 4:
-        cues[-2] += cues.pop()
+        tail = cues.pop()
+        cues[-1] += tail
     # 开头太短就并进下一屏，避免一上来闪三个字（如「路边、」「关注我，」）
     if len(cues) >= 2 and len(cues[0]) < 5 and len(cues[0]) + len(cues[1]) <= max_chars + 4:
         first = cues.pop(0)

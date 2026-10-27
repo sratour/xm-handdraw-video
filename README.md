@@ -79,11 +79,97 @@ python scripts/doctor.py
 ```
 
 - **勾线**：墨线掩膜 → Zhang-Suen 细化 → 沿方向追踪成折线 → 按弧长推进笔尖
-- **上色**：把画面切成网格，每格用 PCA 求出区域主轴，沿垂直方向来回扫描，
+- **上色**：按墨线围出的**色块**逐块涂（`paint._label_components()` 用行游程 +
+  并查集做连通标记，不依赖 scipy），每块用 PCA 求出主轴，沿垂直方向来回扫描，
   行距约等于笔刷直径，路径加正弦弯曲模拟手写抖动
 
 两条通道共用同一套坐标（`strokes.build_context()` 一次返回原图、墨线掩膜、
 笔画序列），否则上色会涂到错位置。
+
+### 上色顺序：一个物体涂完再换下一个
+
+笔尖先涂什么，直接决定成片像不像真人作画。每种做法都是一个独立模块，
+收在 `scripts/painters/` 下，用 `--paint-order` 切换：
+
+| 模块 | `--paint-order`（主名） | 中文别名 | 行为 |
+|---|---|---|---|
+| `painters/object.py` | `object`（默认） | 按物体涂 | 按**物体**整块涂完再换下一个：人、车、房各是一个单位 |
+| `painters/importance.py` | `importance` | 按格打分 | 按 `--tile` 网格逐格打分排序，同一物体常被切碎、与其他物体交错上色 |
+| `painters/scan.py` | `scan` | 逐行扫描 | 按网格从上到下、从左到右涂，跟画面内容无关 |
+
+**认名也认别名**：命令行 `--paint-order`、分镜里的 `paint_order`、代码里的 `order=`
+三处都能用「主名」或「中文别名」（`按物体涂` / `按格打分` / `逐行扫描`），大小写敏感。
+记不住就跑 `python xm_handdraw.py painters` —— 它把三种方式的主名、别名、说明、默认项一次列全。
+不写任何开关时，默认就是 `object`（按物体涂）。
+
+三个开关，作用域从大到小：
+
+```bash
+python xm_handdraw.py build --storyboard sb.json --paint-order scan ...        # 全片，主名
+python xm_handdraw.py build --storyboard sb.json --paint-order 按物体涂 ...   # 全片，别名等价
+python xm_handdraw.py painters                                              # 列出所有方式（含别名）
+```
+
+```jsonc
+// 分镜里单场覆盖，其余场次不受影响
+{ "id": "scene_03", "paint_order": "scan" }      // 也可写 "按格打分"
+```
+
+```python
+# 代码里直接用
+from painters import build_paint_paths, names
+build_paint_paths(ink_mask, rgb=img, order="scan", focus=[[0.2, 0.3, 0.6, 0.9]])
+# order= 同样接受 "按物体涂" 这类别名
+```
+
+模块结构：
+
+```
+scripts/painters/
+  __init__.py       注册表 + build_paint_paths() 统一入口
+  base.py           PaintContext / Painter / REGISTRY，以及画笔与画面分析工具
+                    （scanline_paths、dilate3、background_mask、label_components）
+  scan.py           逐行扫描
+  importance.py     按格打分
+  object.py         按物体涂
+```
+
+**加一种新上色方式** = 在 `painters/` 下加一个模块，实现 `build(ctx)` 并以
+`register(Painter(name=..., label=..., desc=..., build=...))` 结尾，再把模块名
+加进 `__init__.py` 底部的 import 列表。命令行 `--paint-order` 的可选值、
+`painters` 子命令的输出都由注册表自动生成，不用另改。
+
+`object` 的做法分四步：
+
+1. **连通色块**：墨线围出的每个色块（车身、车窗、一面墙）单独标记
+   （`painters.base.label_components()`，行游程 + 并查集，不依赖 scipy）
+2. **并成物体**：包围盒间隙 ≤14px 的色块并成一体——车身 + 车窗 + 轮子 = 一辆车，
+   西装 + 衬衫 + 皮肤 + 头发 = 一个人；合并后的外框不许超过画面 32%，
+   否则背景会被并成一坨（`painters/object.py` 里的 `_cluster_objects()`）
+3. **排顺序**：`paint_focus` 里给的框按口播顺序优先，其余按重要性
+   （饱和度 0.50 + 中心度 0.30 + 面积 0.20 − 背景色占比 × 1.5），
+   纸面、天空永远最后
+4. **物体内部**再按「就近」逐块涂，笔不空跑
+
+#### 按口播顺序指定焦点：`paint_focus`
+
+在 `storyboard.json` 的某个场景里加 `paint_focus`，填 1-3 个归一化框
+（0~1，`[x0,y0,x1,y1]`），**数组顺序就是上色顺序**：
+
+```json
+{
+  "id": "scene_04",
+  "text": "第三、看路边停车，单行道两边的车都朝同一个方向停……",
+  "paint_focus": [[0.00, 0.28, 0.40, 0.90], [0.60, 0.28, 1.00, 0.90]]
+}
+```
+
+这一场口播讲的是「两边停的车」，所以先涂左排车、再涂右排车，最后才轮到店铺
+和路面。不写 `paint_focus` 也能用，就是纯按重要性排。
+
+早期版本只有 `importance` 一档，用户反馈「一个主体还没涂完就去涂另一块」，
+才补了 `object` 这一档并设为默认；后来又提「涂色用物体分类来，人、车、房，
+顺序可以按口播内容来」，于是加了物体聚类和 `paint_focus`。
 
 ### 为什么背景默认不涂
 
@@ -101,7 +187,8 @@ python scripts/doctor.py
 |---|---|---|
 | `--mono` | 关 | 退回黑白线稿模式，不做上色 |
 | `--ink-ratio` | `0.55` | 勾线占总时长的比例，剩下时间上色 |
-| `--tile` | `220` | 上色扫描的网格大小，越小笔触越细 |
+| `--paint-order` | `object` | 上色顺序：`object`(按物体涂) 按色块整块涂、`importance`(按格打分) 按网格打分、`scan`(逐行扫描)；主名或中文别名都行 |
+| `--tile` | `220` | 网格大小，只影响 `importance` / `scan` 两档 |
 | `--paint-bg` | 关 | 连背景一起涂 |
 
 ## 快速开始
@@ -308,6 +395,12 @@ xm-handdraw-video/
 │   └── retro-mystery-manga.md        九十年代周刊少年推理漫画
 ├── assets/
 │   ├── anime-jp-flat/anchor.png  画风锚点图（同时是角色立绘）
+│   ├── char/                     ★ 角色库：一个角色一个目录，按 id 调姿态
+│   │   ├── README.md               怎么加角色、切图参数、命名规则
+│   │   └── office-lady/            职场秘书（6 种姿态）
+│   │       ├── card.md             角色档案：固定特征 + 姿态表
+│   │       ├── manifest.json       索引（脚本读，带现成 prompt）
+│   │       └── poses/              切好的单张立绘
 │   └── fonts/                    抖音美好体 + 许可副本（OFL 1.1）
 ├── references/
 │   ├── style-recipe-spec.md      配方怎么写（五段式规范）
@@ -315,16 +408,23 @@ xm-handdraw-video/
 │   └── free-providers.md         生图平台对比与配置
 ├── docs/                         README 用的预览图与逐笔动图
 ├── scripts/
-│   ├── xm_handdraw.py            CLI 入口（11 个子命令）
+│   ├── xm_handdraw.py            CLI 入口（12 个子命令）
 │   ├── providers.py              生图平台适配器
 │   ├── recipe.py                 配方解析与提示词渲染
 │   ├── scenes.py                 分镜数据结构与切分
 │   ├── narration.py              Edge TTS 配音 + 句级时间戳 + 字幕
 │   ├── strokes.py                ★ 图片 → 笔画序列（骨架化 + 追踪）
-│   ├── paint.py                  ★ 色块 → 马克笔涂抹路径（PCA 扫描线）
+│   ├── paint.py                  ★ 兼容层：旧函数名照旧可用，实现已搬去 painters/
+│   ├── painters/                 ★ 上色方式（每种一个模块，--paint-order 切换）
+│   │   ├── __init__.py            注册表 + build_paint_paths() 统一入口
+│   │   ├── base.py                PaintContext / Painter / REGISTRY + 画笔工具
+│   │   ├── scan.py                逐行扫描
+│   │   ├── importance.py          按格打分
+│   │   └── object.py              按物体涂（默认）
 │   ├── render.py                 ★ 勾线 + 上色 → 逐帧渲染 → 片段 MP4
 │   ├── compose.py                拼接 + 音轨 + 烧字幕 → 成片
 │   ├── check_subjects.py         出图前扫画面饱满度（`check` 子命令）
+│   ├── char_lib.py               ★ 角色库：切图入库 + 按 id 调取姿态
 │   └── doctor.py                 环境自检
 └── requirements.txt
 ```
@@ -405,6 +505,18 @@ PlayResY=288 的脚本，同样的 `FontSize=20` 在 720 高的横屏是 50px，
 
 配音交给 `xm-tts-voiceover` 技能（Edge TTS，免费，带词级时间戳）。
 先拿旁白的实际时长，再定 `--duration`。声音决定节奏，画面适配声音。
+
+### 停顿：三个默认值，一起决定片子读不读得下去
+
+| 旋钮 | 默认 | 说明 |
+|---|---|---|
+| 每段配音的尾巴静音 | 剪到 `0.15s` | Edge TTS 每段结尾自带 ~0.9s 空白，不剪就是十几秒死气 |
+| `gap`（场景间隔） | `0.12` | 分镜里的字段，切点留一个换气的口子 |
+| `hold`（画完定格） | `0.35` | `build --hold`，从片段里扣，不额外加长 |
+
+每段片段的长度必须严格等于 `duration + gap`。短一点点不会报错，但会累积：
+`-shortest` 把片尾还没说完的旁白剪掉，而且越往后字幕越对不上。
+`build` 现在会在渲染后自动按帧对齐，`compose` 合成完还会核对时长、短了就打 `[warn]`。
 
 ## 边界
 

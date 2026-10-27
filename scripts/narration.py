@@ -28,6 +28,12 @@ except ImportError:  # pragma: no cover
 TICKS = 1e7   # edge-tts 的时间单位是 100 纳秒
 DEFAULT_VOICE = "zh-CN-YunxiNeural"
 
+# 每段配音结尾保留多少静音。Edge TTS 每段 mp3 结尾固定带 ~0.9s 空白，
+# 13 段叠起来就是十几秒，镜头之间会明显「断开」——所以合成后统一剪到这么短。
+TAIL_KEEP = 0.15
+TAIL_THRESH = "-40dB"
+TAIL_MIN = 0.25   # 尾部静音短于这个长度就不动（重复调用是安全的）
+
 
 @dataclass
 class Boundary:
@@ -105,9 +111,59 @@ def synth(text: str, out_mp3: str, voice: str = DEFAULT_VOICE,
     return SynthResult(audio=out_mp3, duration=round(dur, 3), boundaries=bounds)
 
 
+def trim_tail(mp3: str, keep: float = TAIL_KEEP) -> float:
+    """剪掉每段配音结尾那段长静音，返回剪完的真实时长。
+
+    Edge TTS 会在每段 mp3 结尾自动补 ~0.9 秒空白。`duration` 取的是文件全长，
+    于是每个场景在画完之后还要干等将近一秒，13 段加起来十几秒，
+    成片会显得一顿一顿的。这里只剪「一直延续到文件末尾」的那段静音，
+    保留 keep 秒收尾，让镜头切换落在自然的呼吸间隙里。
+
+    已经够短就直接返回（不重复编码），所以每次配音都调用、包括 --reuse-voice。
+    """
+    from render import find_ffmpeg
+    exe = find_ffmpeg()
+    total = probe_duration(mp3, exe)
+    if not exe or total < 0.1:
+        return total
+
+    try:
+        p = subprocess.run(
+            [exe, "-hide_banner", "-i", mp3, "-af",
+             f"silencedetect=noise={TAIL_THRESH}:d={TAIL_MIN}", "-f", "null", "-"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+        txt = p.stderr or ""
+    except Exception:
+        return total
+
+    starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", txt)]
+    ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", txt)]
+    if not starts:
+        return total
+    tail_start = starts[-1]
+    # 最后一段静音必须一直延续到文件末尾，否则说明结尾还有话，别乱剪
+    if ends and total - ends[-1] > 0.05:
+        return total
+    if total - tail_start < TAIL_MIN:
+        return total
+
+    tmp = mp3 + ".trim.mp3"
+    cut = min(total, tail_start + keep)
+    try:
+        subprocess.run([exe, "-y", "-loglevel", "error", "-i", mp3, "-t", f"{cut:.3f}",
+                        "-c:a", "libmp3lame", "-b:a", "48k", "-ac", "1", tmp],
+                       check=True, capture_output=True, timeout=120)
+        os.replace(tmp, mp3)
+    except Exception:
+        if os.path.isfile(tmp):
+            os.remove(tmp)
+        return total
+    return round(probe_duration(mp3, exe), 3)
+
+
 def synth_storyboard(sb: Storyboard, workdir: str, voice: str | None = None,
                      rate: str = "+0%", verbose: bool = True,
-                     reuse: bool = False) -> Storyboard:
+                     reuse: bool = False, pitch: str = "+0Hz") -> Storyboard:
     """
     逐场景合成配音，把每个场景的真实时长回填进分镜。
 
@@ -125,18 +181,19 @@ def synth_storyboard(sb: Storyboard, workdir: str, voice: str | None = None,
     for s in sb.scenes:
         out = os.path.join(adir, f"{s.id}.mp3")
         if reuse and os.path.isfile(out) and os.path.getsize(out) > 2048:
-            dur = probe_duration(out) or s.duration
+            dur = trim_tail(out) or s.duration
             s.audio = out
             s.duration = round(dur, 3)
             if verbose:
                 print(f"[voice] {s.id}  {s.duration:6.2f}s  复用已有音频  {s.text[:28]}")
             continue
         # 单场景可以覆盖语速：总结句、字幕卡这类地方需要放慢
-        r = synth(s.text, out, voice=v, rate=s.rate or rate)
+        r = synth(s.text, out, voice=v, rate=s.rate or rate, pitch=pitch)
         s.audio = out
-        s.duration = r.duration
+        # 剪掉 Edge TTS 补在结尾的长静音，时长按剪完的算
+        s.duration = round(trim_tail(out) or r.duration, 3)
         if verbose:
-            print(f"[voice] {s.id}  {r.duration:6.2f}s  {s.text[:28]}")
+            print(f"[voice] {s.id}  {s.duration:6.2f}s  {s.text[:28]}")
 
     sb.voice = v
     sb.assign_timeline()

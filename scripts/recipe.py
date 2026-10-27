@@ -14,6 +14,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterable
 
+def _rel(p: str) -> str:
+    """跨盘符时 relpath 会抛 ValueError，退回原路径。"""
+    try:
+        return os.path.relpath(p, SKILL_ROOT)
+    except ValueError:
+        return p
+
+
 SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STYLES_DIR = os.path.join(SKILL_ROOT, "styles")
 
@@ -215,7 +223,7 @@ if __name__ == "__main__":
         ap = v.anchor_path
         print(f"{k:<24} {v.name}")
         print(f"{'':<24} 别名 {', '.join(v.aliases) or '-'}")
-        print(f"{'':<24} 锚点 {'✓ ' + os.path.relpath(ap, SKILL_ROOT) if ap else '✗ 未就绪'}")
+        print(f"{'':<24} 锚点 {'✓ ' + _rel(ap) if ap else '✗ 未就绪'}")
     if len(sys.argv) > 1:
         r = find(sys.argv[1])
         print("\n--- 渲染示例 ---")

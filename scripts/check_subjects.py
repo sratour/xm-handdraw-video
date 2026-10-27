@@ -33,6 +33,29 @@ def split_clauses(text: str) -> list[str]:
     return [c for c in re.split(r"[；;，,。.！!？?、]", text) if c.strip()]
 
 
+# 构图提醒（不影响 ok/thin 评级）：这类描述模型默认画成横构图
+_HORIZ = ("从左到右", "桌面", "桌上", "台面", "横构图")
+_VERT = ("竖构图", "从上到下", "纵向")
+
+
+def layout_hint(subject: str) -> str:
+    """桌面／左右并排的描述，模型会画成横构图，塞进竖画布就上下留白。
+
+    这不是「画面空」，是「画幅错」，所以单独提醒、不拉低评级。
+    已经在三个项目里各踩过一次（savings/scene_20、trade/scene_14、forex/scene_17）。
+    """
+    s = subject.strip()
+    if not s:
+        return ""
+    # 有站立人物的场次天然填满竖画布，不用提醒（否则 CTA、人物镜会被误报）
+    if any(w in s for w in ("七分身", "全身", "站在", "站立")):
+        return ""
+    if any(w in s for w in _HORIZ) and not any(w in s for w in _VERT):
+        return "像横构图（桌面／左右并排），9:16 画布容易上下留白，建议写「竖构图，画面从上到下铺满」"
+    return ""
+
+
+
 def judge(subject: str) -> tuple[str, list[str]]:
     """返回 (等级, 提示列表)。等级：ok / thin / empty。"""
     s = subject.strip()
@@ -106,6 +129,15 @@ def main() -> int:
     for sid, level, notes in rows:
         mark = {"ok": "✓", "thin": "△", "empty": "✗", "skip": "–"}[level]
         print(f"{mark} {sid:10s} {level:5s}  {'；'.join(notes)}")
+
+    hints = [(sc.get("id", "?"), layout_hint(sc.get("subject", "")))
+             for sc in sb.get("scenes", [])]
+    hints = [(i, h) for i, h in hints if h]
+    if hints:
+        print()
+        print(f"构图提醒（{len(hints)} 场，不影响饱满度评级）：")
+        for i, h in hints:
+            print(f"  - {i}：{h}")
 
     print()
     if not bad:

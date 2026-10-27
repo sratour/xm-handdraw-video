@@ -155,7 +155,8 @@ def render_video(
             else:
                 tip = strokes[-1].points[-1] if strokes else None
 
-            if pen_tip and tip and f < n_frames - 1:
+            # 只在「还在画」的时候显示笔尖；画完的停顿期抬笔，不留红点
+            if pen_tip and tip and f < draw_frames:
                 tx, ty = tip
                 r = max(3, line_width + 2)
                 fd.ellipse([tx - r, ty - r, tx + r, ty + r], fill=pen_color)
@@ -288,7 +289,8 @@ def render_colored(
     tile: int = 220,
     brush_radius: float | None = None,
     skip_background: bool = True,
-    paint_order: str = "scan",
+    paint_order: str = "object",
+    paint_focus: list | None = None,
     pen_tip: bool = True,
     pen_color: tuple[int, int, int] = (214, 69, 65),
     paper: tuple[int, int, int] | None = None,
@@ -345,7 +347,8 @@ def render_colored(
         for pts, radius in build_paint_paths(ink_mask, rgb=rgb, tile=tile,
                                              brush_radius=brush_radius,
                                              skip_background=skip_background,
-                                             order=paint_order):
+                                             order=paint_order,
+                                             focus=paint_focus):
             paint_paths.append((pts, max(2.0, radius * scale)))
 
     has_paint = bool(paint_paths)
@@ -393,7 +396,8 @@ def render_colored(
             np.copyto(buf, art, where=shown[:, :, None])
             im = Image.fromarray(buf)
 
-            if pen_tip and f < n_frames - 1:
+            # 只在「还在画」的时候显示笔尖；画完的停顿期抬笔，不留红点
+            if pen_tip and f < draw_frames:
                 tip, tip_idx = _tip_at(segments, p, tip_idx)
                 if tip:
                     fd = ImageDraw.Draw(im)
@@ -455,6 +459,7 @@ def make_video(
     duration: float = 8.0,
     **kwargs,
 ) -> str:
+    kwargs.pop("paint_focus", None)      # 黑白模式不上色，用不到焦点框
     ss = build_strokes(
         image_path,
         max_side=kwargs.pop("max_side", 1100),
