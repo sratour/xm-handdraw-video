@@ -1,0 +1,21 @@
+# 仓库统一用 LF 存储，Windows 上也不会再因为换行符产生「整文件重写」的假 diff。
+# eol=lf 表示检出到工作区也是 LF；编辑器若写成 CRLF，提交时会自动规范化回 LF。
+* text=auto eol=lf
+
+# 二进制资源，别做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.otf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.mp4 binary
+*.mov binary
+*.mp3 binary
+*.m4a binary
+*.wav binary
+*.zip binary
+*.pdf binary
